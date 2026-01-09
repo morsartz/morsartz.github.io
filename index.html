@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Imageboard</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>📋 Imageboard</h1>
+        
+        <div class="formulario">
+            <h2>Fazer um post</h2>
+            <input type="text" id="titulo" placeholder="Título do post" maxlength="100">
+            <textarea id="corpo" placeholder="Escreva sua mensagem..." maxlength="1000"></textarea>
+            <input type="file" id="imagem" accept="image/*">
+            <button onclick="fazerPost()">Postar</button>
+            <div id="status"></div>
+        </div>
+
+        <hr>
+
+        <div class="posts">
+            <h2>Posts</h2>
+            <div id="listaPosts"></div>
+        </div>
+    </div>
+
+    <script>
+        // COLE AQUI O FIREBASE CONFIG QUE VOCÊ COPIOU
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT_ID.appspot.com",
+            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+
+        // Inicializa Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        // Função para converter imagem pra base64
+        function converterImagem(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // Função pra fazer um post
+        async function fazerPost() {
+            const titulo = document.getElementById('titulo').value.trim();
+            const corpo = document.getElementById('corpo').value.trim();
+            const imagemFile = document.getElementById('imagem').files[0];
+            const status = document.getElementById('status');
+
+            if (!titulo || !corpo) {
+                status.textContent = '❌ Preencha título e corpo!';
+                status.style.color = 'red';
+                return;
+            }
+
+            status.textContent = '⏳ Salvando...';
+            status.style.color = 'blue';
+
+            try {
+                let imagem = null;
+                if (imagemFile) {
+                    imagem = await converterImagem(imagemFile);
+                }
+
+                // Criar objeto do post
+                const post = {
+                    titulo,
+                    corpo,
+                    imagem,
+                    timestamp: Date.now(),
+                    id: Date.now().toString()
+                };
+
+                // Salvar no Firebase
+                await db.ref('posts/' + post.id).set(post);
+
+                // Limpar formulário
+                document.getElementById('titulo').value = '';
+                document.getElementById('corpo').value = '';
+                document.getElementById('imagem').value = '';
+
+                status.textContent = '✅ Post criado com sucesso!';
+                status.style.color = 'green';
+                setTimeout(() => status.textContent = '', 3000);
+
+                // Carregar posts novamente
+                carregarPosts();
+            } catch (erro) {
+                status.textContent = '❌ Erro ao salvar: ' + erro.message;
+                status.style.color = 'red';
+            }
+        }
+
+        // Função pra carregar posts do Firebase
+        function carregarPosts() {
+            db.ref('posts').on('value', (snapshot) => {
+                const listaPosts = document.getElementById('listaPosts');
+                listaPosts.innerHTML = '';
+
+                const posts = [];
+                snapshot.forEach((child) => {
+                    posts.push(child.val());
+                });
+
+                // Ordena do mais novo pro mais velho
+                posts.sort((a, b) => b.timestamp - a.timestamp);
+
+                if (posts.length === 0) {
+                    listaPosts.innerHTML = '<p style="text-align: center; color: #999;">Nenhum post ainda. Seja o primeiro!</p>';
+                    return;
+                }
+
+                posts.forEach((post) => {
+                    const postDiv = document.createElement('div');
+                    postDiv.className = 'post';
+                    
+                    let imagemHTML = '';
+                    if (post.imagem) {
+                        imagemHTML = `<img src="${post.imagem}" class="post-imagem">`;
+                    }
+
+                    const data = new Date(post.timestamp).toLocaleString('pt-BR');
+
+                    postDiv.innerHTML = `
+                        <div class="post-header">
+                            <h3>${escapeHtml(post.titulo)}</h3>
+                            <span class="post-data">${data}</span>
+                        </div>
+                        ${imagemHTML}
+                        <p>${escapeHtml(post.corpo)}</p>
+                    `;
+                    
+                    listaPosts.appendChild(postDiv);
+                });
+            });
+        }
+
+        // Função pra evitar injeção de HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Carregar posts quando a página carrega
+        carregarPosts();
+    </script>
+</body>
+</html>
